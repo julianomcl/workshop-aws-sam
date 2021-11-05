@@ -1,0 +1,63 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+    api-calculator
+
+Globals:
+    Api:
+        EndpointConfiguration: REGIONAL
+        TracingEnabled: true
+        Cors:
+            AllowOrigin: "'*'"
+            AllowHeaders: "'Content-Type,Authorization,X-Amz-Date'"
+            MaxAge: "'300'"
+        BinaryMediaTypes:
+          - '*~1*'
+    Function:
+        Timeout: 5
+        MemorySize: 256
+        Runtime: python3.8
+        Tracing: Active
+        Environment:
+            Variables:
+                LOG_LEVEL: INFO
+                POWERTOOLS_LOGGER_SAMPLE_RATE: 0.1
+                POWERTOOLS_LOGGER_LOG_EVENT: true
+                POWERTOOLS_METRICS_NAMESPACE: WorkshopApplication
+                POWERTOOLS_SERVICE_NAME: calculator
+
+Resources:
+    CalculatorFunction:
+        Type: AWS::Serverless::Function
+        Properties:
+            Handler: app.lambda_handler
+            CodeUri: calculator
+            Description: Calculator function
+            Events:
+                Operations:
+                    Type: Api
+                    Properties:
+                        Path: /calculator/operations
+                        Method: GET
+                CalcSum:
+                    Type: Api
+                    Properties:
+                        Path: /calculator/sum
+                        Method: POST
+                CalcMultiply:
+                    Type: Api
+                    Properties:
+                        Path: /calculator/multiplication
+                        Method: POST
+            Tags:
+                LambdaPowertools: python
+
+Outputs:
+    CalculatorApigwURL:
+      Description: "API Gateway endpoint URL for Prod environment for Calculator Function"
+      Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"
+
+    CalculatorFunction:
+      Description: "Hello World Lambda Function ARN"
+      Value: !GetAtt CalculatorFunction.Arn
+

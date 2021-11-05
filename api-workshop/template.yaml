@@ -1,0 +1,89 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+    api-workshop
+
+Globals:
+    Api:
+        EndpointConfiguration: REGIONAL
+        Auth:
+#            DefaultAuthorizer: AWS_IAM
+            DefaultAuthorizer: LambdaTokenAuthorizer
+            Authorizers:
+                LambdaTokenAuthorizer:
+                    FunctionArn: !GetAtt WorkshopAuthFunction.Arn
+        Domain:
+            DomainName: workshop.mydomain.com.br
+            CertificateArn: !Ref WorkshopCertificate
+            EndpointConfiguration: REGIONAL
+            Route53:
+                HostedZoneId: X00000000XXXXX0X0XX0X # TODO add HostedZoneId
+            SecurityPolicy: TLS_1_2
+            BasePath:
+                - /api
+        TracingEnabled: true
+        Cors:
+            AllowOrigin: "'*'"
+            AllowHeaders: "'Content-Type,Authorization,X-Amz-Date'"
+            MaxAge: "'300'"
+        BinaryMediaTypes:
+          - '*~1*'
+    Function:
+        Timeout: 5
+        MemorySize: 256
+        Runtime: python3.8
+        Tracing: Active
+        Environment:
+            Variables:
+                LOG_LEVEL: INFO
+                POWERTOOLS_LOGGER_SAMPLE_RATE: 0.1
+                POWERTOOLS_LOGGER_LOG_EVENT: true
+                POWERTOOLS_METRICS_NAMESPACE: WorkshopApplication
+                POWERTOOLS_SERVICE_NAME: api
+
+Resources:
+    WorkshopFunction:
+        Type: AWS::Serverless::Function
+        Properties:
+            Handler: app.lambda_handler
+            CodeUri: workshop
+            Description: Workshop function
+            Events:
+                DriveLink:
+                    Type: Api
+                    Properties:
+                        Path: /drive
+                        Method: GET
+            Tags:
+                LambdaPowertools: python
+
+    WorkshopAuthFunction:
+        Type: AWS::Serverless::Function
+        Properties:
+            CodeUri: authorizer
+            Handler: app.handler
+
+    WorkshopCertificate:
+        Type: AWS::CertificateManager::Certificate
+        Properties:
+            DomainName: workshop.mydomain.com.br
+            ValidationMethod: DNS
+
+    WorkshopV1Mapping:
+        Type: AWS::ApiGatewayV2::ApiMapping
+        DependsOn: ServerlessRestApiProdStage
+        Properties:
+            ApiId: !Ref ServerlessRestApi
+            ApiMappingKey: api/v1
+            DomainName: workshop.mydomain.com.br
+            Stage: Prod
+
+Outputs:
+    WorkshopApigwURL:
+      Description: "API Gateway endpoint URL for Prod environment for Workshop Function"
+      Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"
+
+    WorkshopFunction:
+      Description: "Workshop Lambda Function ARN"
+      Value: !GetAtt WorkshopFunction.Arn
+

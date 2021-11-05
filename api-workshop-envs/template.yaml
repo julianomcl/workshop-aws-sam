@@ -1,0 +1,113 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+    api-workshop
+
+Globals:
+    Api:
+        EndpointConfiguration: REGIONAL
+        Auth:
+            DefaultAuthorizer: AWS_IAM
+#            DefaultAuthorizer: LambdaTokenAuthorizer
+#            Authorizers:
+#                LambdaTokenAuthorizer:
+#                    FunctionArn: !GetAtt WorkshopAuthFunction.Arn
+        Domain:
+            DomainName: !FindInMap [ EnvMapping, !Ref Env, SubdomainMapping ]
+            CertificateArn: !Ref WorkshopCertificate
+            EndpointConfiguration: REGIONAL
+            Route53:
+                HostedZoneId: !Ref HostedZoneId
+            SecurityPolicy: TLS_1_2
+            BasePath:
+                - /api
+        TracingEnabled: true
+        Cors:
+            AllowOrigin: "'*'"
+            AllowHeaders: "'Content-Type,Authorization,X-Amz-Date'"
+            MaxAge: "'300'"
+        BinaryMediaTypes:
+          - '*~1*'
+    Function:
+        Timeout: 5
+        MemorySize: 256
+        Runtime: python3.8
+        Tracing: Active
+        Environment:
+            Variables:
+                LOG_LEVEL: INFO
+                POWERTOOLS_LOGGER_SAMPLE_RATE: 0.1
+                POWERTOOLS_LOGGER_LOG_EVENT: true
+                POWERTOOLS_METRICS_NAMESPACE: WorkshopApplication
+                POWERTOOLS_SERVICE_NAME: api
+                LINK_DRIVE: '{{resolve:ssm:/WorkshopLinkDrive:1}}'
+
+Parameters:
+    Env:
+        Type: String
+        AllowedValues:
+          - dev
+          - sandbox
+          - prod
+        Description: Ambiente em que a aplicação será implantada. Valores permitidos [dev, sandbox, prod]
+    Subdomain:
+        Type: String
+        Default: workshop.mydomain.com.br
+    HostedZoneId:
+        Type: String
+
+Mappings:
+  EnvMapping:
+    dev:
+      SubdomainMapping: workshop.develop.mydomain.com.br
+    sandbox:
+      SubdomainMapping: workshop.sandbox.mydomain.com.br
+    prod:
+      SubdomainMapping: workshop.mydomain.com.br
+
+Resources:
+    WorkshopFunction:
+        Type: AWS::Serverless::Function
+        Properties:
+            Handler: app.lambda_handler
+            CodeUri: workshop
+            Description: Workshop function
+            Events:
+                DriveLink:
+                    Type: Api
+                    Properties:
+                        Path: /drive
+                        Method: GET
+            Tags:
+                LambdaPowertools: python
+
+#    WorkshopAuthFunction:
+#        Type: AWS::Serverless::Function
+#        Properties:
+#            CodeUri: authorizer
+#            Handler: app.handler
+
+    WorkshopCertificate:
+        Type: AWS::CertificateManager::Certificate
+        Properties:
+            DomainName: !FindInMap [ EnvMapping, !Ref Env, SubdomainMapping ]
+            ValidationMethod: DNS
+
+    WorkshopV1Mapping:
+        Type: AWS::ApiGatewayV2::ApiMapping
+        DependsOn: ServerlessRestApiProdStage
+        Properties:
+            ApiId: !Ref ServerlessRestApi
+            ApiMappingKey: api/v1
+            DomainName: !FindInMap [ EnvMapping, !Ref Env, SubdomainMapping ]
+            Stage: Prod
+
+Outputs:
+    WorkshopApigwURL:
+      Description: "API Gateway endpoint URL for Prod environment for Workshop Function"
+      Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"
+
+    WorkshopFunction:
+      Description: "Workshop Lambda Function ARN"
+      Value: !GetAtt WorkshopFunction.Arn
+
